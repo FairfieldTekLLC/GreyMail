@@ -1,6 +1,7 @@
 ﻿using System.Linq.Expressions;
 using Azure.Identity;
 using EmailReader.SemanticKernel;
+using GreyMail;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.Messages.Item.Move;
@@ -157,6 +158,7 @@ internal class Program
     private static async Task Main(string[] args)
     {
         Config.Instance.Load();
+        SqlLiteProvider.Initialize();
         if (!await CheckIfFolderExists(Config.Instance.PromotionsMailFolder))
             await CreateMailFolder(Config.Instance.PromotionsMailFolder);
 
@@ -171,8 +173,16 @@ internal class Program
         {
             foreach (Message message in messages.Value)
                 if (message.Body is { Content: not null })
-                    if (await IsPromotional(message.Body.Content))
-                        await MoveEmailToFolderAsync(message.Id, promotionFolderId);
+                    if (!SqlLiteProvider.CheckIfMessageProcessed(message.Id))
+                    {
+                        if (await IsPromotional(message.Body.Content))
+                            await MoveEmailToFolderAsync(message.Id, promotionFolderId);
+                        SqlLiteProvider.SaveMessageId(message.Id);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Skipping");
+                    }
 
 
             while (messages.OdataNextLink != null)
@@ -182,8 +192,17 @@ internal class Program
                     continue;
                 foreach (Message message in messages.Value)
                     if (message.Body is { Content: not null })
-                        if (await IsPromotional(message.Body.Content))
-                            await MoveEmailToFolderAsync(message.Id, promotionFolderId);
+                        if (!SqlLiteProvider.CheckIfMessageProcessed(message.Id))
+                        {
+                            if (await IsPromotional(message.Body.Content))
+                                await MoveEmailToFolderAsync(message.Id, promotionFolderId);
+                            SqlLiteProvider.SaveMessageId(message.Id);
+                        }
+                        else
+                        {
+                            Console.WriteLine("Skipping");
+                        }
+
 
             }
         }
