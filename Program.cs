@@ -1,4 +1,5 @@
-﻿using Azure.Identity;
+﻿using System.Linq.Expressions;
+using Azure.Identity;
 using EmailReader.SemanticKernel;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
@@ -70,19 +71,26 @@ internal class Program
     /// <returns></returns>
     private static async Task<string> FindFolder(string targetFolderName)
     {
-        GraphServiceClient graphClient = GetGraphClient();
-        MailFolderCollectionResponse? collectionResponse =
-            await graphClient.Users[Config.Instance.UserPrincipleName].MailFolders.GetAsync();
-        foreach (var folder in collectionResponse.Value.Where(folder =>
-                     folder.DisplayName.Equals(targetFolderName, StringComparison.InvariantCultureIgnoreCase)))
-            return folder.Id;
-        while (collectionResponse.OdataNextLink != null)
+        try
         {
-            collectionResponse = await graphClient.Users[Config.Instance.UserPrincipleName].MailFolders
-                .WithUrl(collectionResponse.OdataNextLink).GetAsync();
+            GraphServiceClient graphClient = GetGraphClient();
+            MailFolderCollectionResponse? collectionResponse =
+                await graphClient.Users[Config.Instance.UserPrincipleName].MailFolders.GetAsync();
             foreach (var folder in collectionResponse.Value.Where(folder =>
                          folder.DisplayName.Equals(targetFolderName, StringComparison.InvariantCultureIgnoreCase)))
                 return folder.Id;
+            while (collectionResponse.OdataNextLink != null)
+            {
+                collectionResponse = await graphClient.Users[Config.Instance.UserPrincipleName].MailFolders
+                    .WithUrl(collectionResponse.OdataNextLink).GetAsync();
+                foreach (var folder in collectionResponse.Value.Where(folder =>
+                             folder.DisplayName.Equals(targetFolderName, StringComparison.InvariantCultureIgnoreCase)))
+                    return folder.Id;
+            }
+        }
+        catch (Exception)
+        {
+            //Nothing
         }
 
         return "";
@@ -149,9 +157,6 @@ internal class Program
     private static async Task Main(string[] args)
     {
         Config.Instance.Load();
-
-        GraphServiceClient graphClient = GetGraphClient();
-
         if (!await CheckIfFolderExists(Config.Instance.PromotionsMailFolder))
             await CreateMailFolder(Config.Instance.PromotionsMailFolder);
 
@@ -159,10 +164,7 @@ internal class Program
 
         // Retrieve messages from the user's Inbox folder
         // You can use well-known folder names like 'Inbox', 'SentItems', etc.
-        MessageCollectionResponse? messages = await graphClient.Users[Config.Instance.UserPrincipleName]
-            .MailFolders["Inbox"]
-            .Messages
-            .GetAsync();
+        MessageCollectionResponse? messages = await GetEmails();
 
 
         if (messages!.Value != null)
@@ -175,11 +177,7 @@ internal class Program
 
             while (messages.OdataNextLink != null)
             {
-                messages = await graphClient.Users[Config.Instance.UserPrincipleName]
-                    .MailFolders["Inbox"]
-                    .Messages
-                    .WithUrl(messages.OdataNextLink)
-                    .GetAsync();
+                messages = await GetEmails(messages.OdataNextLink);
                 if (messages!.Value == null)
                     continue;
                 foreach (Message message in messages.Value)
@@ -189,5 +187,37 @@ internal class Program
 
             }
         }
+    }
+
+    public static async Task<MessageCollectionResponse?> GetEmails(string? odataNextLink = null)
+    {
+        while (true)
+        {
+            try
+            {
+                GraphServiceClient graphClient = GetGraphClient();
+                if (odataNextLink == null)
+                {
+
+                    return await graphClient.Users[Config.Instance.UserPrincipleName]
+                        .MailFolders["Inbox"]
+                        .Messages
+                        .GetAsync();
+                }
+                else
+                {
+                    return await graphClient.Users[Config.Instance.UserPrincipleName]
+                        .MailFolders["Inbox"]
+                        .Messages
+                        .WithUrl(odataNextLink)
+                        .GetAsync();
+                }
+            }
+            catch (Exception e)
+            {
+                await Task.Delay(2000);
+            }
+        }
+
     }
 }
