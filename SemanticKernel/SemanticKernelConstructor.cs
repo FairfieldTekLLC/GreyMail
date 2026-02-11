@@ -2,7 +2,7 @@
 using Microsoft.SemanticKernel;
 using OllamaSharp;
 
-namespace EmailReader.SemanticKernel;
+namespace GreyMail.SemanticKernel;
 
 public class SemanticKernelConstructor
 {

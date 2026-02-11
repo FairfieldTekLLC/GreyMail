@@ -4,8 +4,12 @@
   "ClientSecret": "Client Secret",
   //"Model": "PetrosStav/gemma3-tools:4b",
   "Model": "qwen3:latest",
+  //"Model": "qwen3-vl:235b-cloud",
   "OllamaServerUrl": "http://**************:11434",
   "UserPrincipleName": "someone@somewhere.com",
-  "PromotionsMailFolder": "_Promotions"
-
+  "PromotionsMailFolder": "_Promotions",
+  "WhiteList": [
+    "someplace.com",
+    "else.com"
+  ]
 }

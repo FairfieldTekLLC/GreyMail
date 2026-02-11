@@ -1,7 +1,8 @@
 ﻿using System.Reflection;
+using System.Runtime.CompilerServices;
 using Newtonsoft.Json;
 
-namespace EmailReader;
+namespace GreyMail;
 
 public class Config
 {
@@ -23,6 +24,8 @@ public class Config
     public string UserPrincipleName { get; set; }
 
     public string PromotionsMailFolder { get; set; }
+
+    public string[] WhiteList { get; set; }
 
 
     [Newtonsoft.Json.JsonIgnore] public static Config Instance => LazyInstance.Value;
@@ -57,5 +60,6 @@ public class Config
         OllamaServerUrl = config.OllamaServerUrl;
         UserPrincipleName = config.UserPrincipleName;
         PromotionsMailFolder = config.PromotionsMailFolder;
+        WhiteList=config.WhiteList;
     }
 }

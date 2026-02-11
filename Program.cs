@@ -1,242 +1,127 @@
-﻿using System.Linq.Expressions;
-using Azure.Identity;
-using EmailReader.SemanticKernel;
-using GreyMail;
-using Microsoft.Graph;
+﻿using Azure.Identity;
+using GreyMail.Graph;
+using GreyMail.SemanticKernel;
+using GreyMail.Sqlite;
 using Microsoft.Graph.Models;
-using Microsoft.Graph.Users.Item.Messages.Item.Move;
-using Microsoft.Kiota.Abstractions;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 
-namespace EmailReader;
+namespace GreyMail;
 
 internal class Program
 {
-
-    /// <summary>
-    /// Moves a email to another folder
-    /// </summary>
-    /// <param name="messageId">Message Id</param>
-    /// <param name="destinationFolderId">Destination Folder Id</param>
-    /// <returns></returns>
-    public static async Task MoveEmailToFolderAsync(string messageId, string destinationFolderId)
-    {
-        GraphServiceClient graphClient = GetGraphClient();
-        // Define the request body with the destination folder ID
-        var requestBody = new MovePostRequestBody
-        {
-            DestinationId = destinationFolderId
-        };
-
-        try
-        {
-            // Call the Move API method
-            await graphClient.Users[Config.Instance.UserPrincipleName].Messages[messageId].Move.PostAsync(requestBody);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error moving email: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// Creates a Mail folder
-    /// </summary>
-    /// <param name="folderName"></param>
-    /// <returns></returns>
-    public static async Task<MailFolder?> CreateMailFolder(string folderName)
-    {
-        GraphServiceClient graphClient = GetGraphClient();
-        var newMailFolder = new MailFolder
-        {
-            DisplayName = folderName
-        };
-
-        try
-        {
-            var createdFolder = await graphClient.Users[Config.Instance.UserPrincipleName].MailFolders
-                .PostAsync(newMailFolder);
-            return createdFolder;
-        }
-        catch (ApiException ex)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Finds a folder in the Mailbox
-    /// </summary>
-    /// <param name="targetFolderName"></param>
-    /// <returns></returns>
-    private static async Task<string> FindFolder(string targetFolderName)
-    {
-        try
-        {
-            GraphServiceClient graphClient = GetGraphClient();
-            MailFolderCollectionResponse? collectionResponse =
-                await graphClient.Users[Config.Instance.UserPrincipleName].MailFolders.GetAsync();
-            foreach (var folder in collectionResponse.Value.Where(folder =>
-                         folder.DisplayName.Equals(targetFolderName, StringComparison.InvariantCultureIgnoreCase)))
-                return folder.Id;
-            while (collectionResponse.OdataNextLink != null)
-            {
-                collectionResponse = await graphClient.Users[Config.Instance.UserPrincipleName].MailFolders
-                    .WithUrl(collectionResponse.OdataNextLink).GetAsync();
-                foreach (var folder in collectionResponse.Value.Where(folder =>
-                             folder.DisplayName.Equals(targetFolderName, StringComparison.InvariantCultureIgnoreCase)))
-                    return folder.Id;
-            }
-        }
-        catch (Exception)
-        {
-            //Nothing
-        }
-
-        return "";
-    }
-
-    /// <summary>
-    /// Fetches a Graph Client
-    /// </summary>
-    /// <returns></returns>
-    public static GraphServiceClient GetGraphClient()
-    {
-        string tenantId = Config.Instance.TenantId;
-        string clientId = Config.Instance.ClientId;
-        string clientSecret = Config.Instance.ClientSecret;
-        // User Principal Name (UPN) or ID of the user whose mailbox you want to access
-        //const string userPrincipalName = "user@yourtenant.onmicrosoft.com";
-        ClientSecretCredentialOptions options = new ClientSecretCredentialOptions();
-        // Initialize the credential with the client secret
-        ClientSecretCredential clientSecretCredential = new ClientSecretCredential(
-            tenantId, clientId, clientSecret, options);
-        return new GraphServiceClient(clientSecretCredential);
-    }
-
-    /// <summary>
-    /// Checks if a folder exists in the user principle's mailbox
-    /// </summary>
-    /// <param name="targetFolderName"></param>
-    /// <returns></returns>
-    public static async Task<bool> CheckIfFolderExists(string targetFolderName)
-    {
-        try
-        {
-            string r = await FindFolder(targetFolderName);
-            return !string.IsNullOrEmpty(r);
-        }
-        catch (Exception e)
-        {
-            return false;
-        }
-    }
-
     public static async Task<bool> IsPromotional(string emailBody)
     {
-        PromptExecutionSettings settings = new PromptExecutionSettings
-        {
-            FunctionChoiceBehavior = FunctionChoiceBehavior.Required(autoInvoke: true),
-            ModelId = Config.Instance.Model
-        };
-        SemanticKernelConstructor constructor = new SemanticKernelConstructor();
-        ChatHistory history = [];
-        history.AddMessage(AuthorRole.User, "Please provide as brief of a answer as possible.");
-        history.AddMessage(AuthorRole.User, "Is this a promotional email selling something or advertising?");
-        history.AddMessage(AuthorRole.User, emailBody);
-        var chat = constructor.Kernel.GetRequiredService<IChatCompletionService>();
-
-        IReadOnlyList<ChatMessageContent> result =
-            await chat.GetChatMessageContentsAsync(history, settings, constructor.Kernel);
-
-        Console.WriteLine(result[0].Content);
-
-        return !result[0].Content.StartsWith("No", StringComparison.InvariantCultureIgnoreCase);
-    }
-
-    private static async Task Main(string[] args)
-    {
-        Config.Instance.Load();
-        SqlLiteProvider.Initialize();
-        if (!await CheckIfFolderExists(Config.Instance.PromotionsMailFolder))
-            await CreateMailFolder(Config.Instance.PromotionsMailFolder);
-
-        var promotionFolderId = await FindFolder(Config.Instance.PromotionsMailFolder);
-
-        // Retrieve messages from the user's Inbox folder
-        // You can use well-known folder names like 'Inbox', 'SentItems', etc.
-        MessageCollectionResponse? messages = await GetEmails();
-
-
-        if (messages!.Value != null)
-        {
-            foreach (Message message in messages.Value)
-                if (message.Body is { Content: not null })
-                    if (!SqlLiteProvider.CheckIfMessageProcessed(message.Id))
-                    {
-                        if (await IsPromotional(message.Body.Content))
-                            await MoveEmailToFolderAsync(message.Id, promotionFolderId);
-                        SqlLiteProvider.SaveMessageId(message.Id);
-                    }
-                    else
-                    {
-                        Console.WriteLine("Skipping");
-                    }
-
-
-            while (messages.OdataNextLink != null)
-            {
-                messages = await GetEmails(messages.OdataNextLink);
-                if (messages!.Value == null)
-                    continue;
-                foreach (Message message in messages.Value)
-                    if (message.Body is { Content: not null })
-                        if (!SqlLiteProvider.CheckIfMessageProcessed(message.Id))
-                        {
-                            if (await IsPromotional(message.Body.Content))
-                                await MoveEmailToFolderAsync(message.Id, promotionFolderId);
-                            SqlLiteProvider.SaveMessageId(message.Id);
-                        }
-                        else
-                        {
-                            Console.WriteLine("Skipping");
-                        }
-
-
-            }
-        }
-    }
-
-    public static async Task<MessageCollectionResponse?> GetEmails(string? odataNextLink = null)
-    {
         while (true)
-        {
             try
             {
-                GraphServiceClient graphClient = GetGraphClient();
-                if (odataNextLink == null)
+                PromptExecutionSettings settings = new PromptExecutionSettings
                 {
+                    FunctionChoiceBehavior = FunctionChoiceBehavior.Required(autoInvoke: true),
+                    ModelId = Config.Instance.Model
+                };
+                SemanticKernelConstructor constructor = new SemanticKernelConstructor();
+                ChatHistory history = [];
+                history.AddMessage(AuthorRole.User, "Please provide as brief of a answer as possible.");
+                history.AddMessage(AuthorRole.User, "Is this a promotional email selling something or advertising?");
+                history.AddMessage(AuthorRole.User, emailBody);
+                IChatCompletionService chat = constructor.Kernel.GetRequiredService<IChatCompletionService>();
 
-                    return await graphClient.Users[Config.Instance.UserPrincipleName]
-                        .MailFolders["Inbox"]
-                        .Messages
-                        .GetAsync();
-                }
-                else
-                {
-                    return await graphClient.Users[Config.Instance.UserPrincipleName]
-                        .MailFolders["Inbox"]
-                        .Messages
-                        .WithUrl(odataNextLink)
-                        .GetAsync();
-                }
+                IReadOnlyList<ChatMessageContent> result =
+                    await chat.GetChatMessageContentsAsync(history, settings, constructor.Kernel);
+
+                Console.ForegroundColor=ConsoleColor.Cyan;
+                Console.WriteLine(result[0].Content);
+                Console.ForegroundColor = ConsoleColor.Blue;
+
+                return !result[0].Content.StartsWith("No", StringComparison.InvariantCultureIgnoreCase);
             }
             catch (Exception e)
             {
                 await Task.Delay(2000);
             }
-        }
+    }
 
+
+    public static void UserExited()
+    {
+        if (!Console.KeyAvailable) return;
+        string text = Console.ReadLine();
+        if (text.Equals("exit", StringComparison.InvariantCultureIgnoreCase))
+            Environment.Exit(1);
+    }
+
+
+    public static async Task ProcessEmail(Message message, string promotionFolderId)
+    {
+        if (!SqlLiteProvider.CheckIfMessageProcessed(message.Id))
+        {
+            if (!await GraphApi.IsAlreadyProcessed(message.Id))
+            {
+                string domain = message.Sender.EmailAddress.Address.GetDomainFromEmail();
+                if (!SqlLiteProvider.IsWhiteListed(domain))
+                    if (await IsPromotional(message.Body.Content))
+                        await GraphApi.MoveEmailToFolderAsync(message.Id, promotionFolderId);
+            }
+            else
+            {
+                string domain = message.From.EmailAddress.Address.GetDomainFromEmail();
+                SqlLiteProvider.SaveWhiteList(domain);
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine("WhiteListed - " + domain);
+            }
+
+            SqlLiteProvider.SaveMessageId(message.Id);
+        }
+        
+    }
+
+
+    private static async Task Main(string[] args)
+    {
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.Write("Type '");
+        Console.ForegroundColor = ConsoleColor.Blue;
+        Console.Write("exit");
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.Write("' to exit.");
+        Console.WriteLine();
+
+        Config.Instance.Load();
+        SqlLiteProvider.Initialize();
+        foreach (string domain in Config.Instance.WhiteList) SqlLiteProvider.SaveWhiteList(domain);
+
+
+        if (!await GraphApi.CheckIfFolderExists(Config.Instance.PromotionsMailFolder))
+            await GraphApi.CreateMailFolder(Config.Instance.PromotionsMailFolder);
+
+        string promotionFolderId = await GraphApi.FindFolder(Config.Instance.PromotionsMailFolder);
+        while (true)
+        {
+            MessageCollectionResponse? messages = await GraphApi.GetEmails();
+            if (messages!.Value == null)
+                continue;
+            foreach (Message message in messages.Value)
+                if (message.Body is { Content: not null })
+                {
+                    UserExited();
+                    await ProcessEmail(message, promotionFolderId);
+                    UserExited();
+                }
+
+            while (messages.OdataNextLink != null)
+            {
+                messages = await GraphApi.GetEmails(messages.OdataNextLink);
+                if (messages!.Value == null)
+                    continue;
+                foreach (Message message in messages.Value)
+                    if (message.Body is { Content: not null })
+                    {
+                        UserExited();
+                        await ProcessEmail(message, promotionFolderId);
+                        UserExited();
+                    }
+            }
+        }
     }
 }
