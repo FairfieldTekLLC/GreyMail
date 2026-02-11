@@ -1,5 +1,4 @@
-﻿using Azure.Identity;
-using GreyMail.Graph;
+﻿using GreyMail.Graph;
 using GreyMail.SemanticKernel;
 using GreyMail.Sqlite;
 using Microsoft.Graph.Models;
@@ -76,7 +75,6 @@ internal class Program
 
             SqlLiteProvider.SaveMessageId(message.Id);
         }
-
     }
 
 
