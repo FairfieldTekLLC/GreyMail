@@ -30,7 +30,7 @@ internal class Program
                 IReadOnlyList<ChatMessageContent> result =
                     await chat.GetChatMessageContentsAsync(history, settings, constructor.Kernel);
 
-                Console.ForegroundColor=ConsoleColor.Cyan;
+                Console.ForegroundColor = ConsoleColor.Cyan;
                 Console.WriteLine(result[0].Content);
                 Console.ForegroundColor = ConsoleColor.Blue;
 
@@ -45,8 +45,11 @@ internal class Program
 
     public static void UserExited()
     {
-        if (!Console.KeyAvailable) return;
-        string text = Console.ReadLine();
+        if (!Console.KeyAvailable)
+            return;
+        string? text = Console.ReadLine();
+        if (text == null)
+            return;
         if (text.Equals("exit", StringComparison.InvariantCultureIgnoreCase))
             Environment.Exit(1);
     }
@@ -73,7 +76,7 @@ internal class Program
 
             SqlLiteProvider.SaveMessageId(message.Id);
         }
-        
+
     }
 
 
