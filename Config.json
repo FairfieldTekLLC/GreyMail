@@ -11,5 +11,7 @@
   "WhiteList": [
     "someplace.com",
     "else.com"
-  ]
+  ],
+  "GoogleApiKey": "------------------------------",
+  "Mode": "ollama"
 }

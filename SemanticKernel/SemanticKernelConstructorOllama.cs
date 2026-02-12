@@ -1,12 +1,13 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 using OllamaSharp;
 
 namespace GreyMail.SemanticKernel;
 
-public class SemanticKernelConstructor
+public class SemanticKernelConstructorOllama: ISemanticKernelConstructorOllama
 {
-    public SemanticKernelConstructor()
+    public SemanticKernelConstructorOllama()
     {
         Config.Instance.Load();
         KernelBuilder = Kernel.CreateBuilder();
@@ -21,6 +22,11 @@ public class SemanticKernelConstructor
         Kernel = KernelBuilder.Build();
         KernelBuilder.Services.AddSingleton(Kernel);
     }
+
+    
+
+
+
     public IKernelBuilder KernelBuilder { get; }
     public Kernel Kernel { get; }
 }

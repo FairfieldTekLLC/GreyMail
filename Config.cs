@@ -27,6 +27,9 @@ public class Config
 
     public string[] WhiteList { get; set; }
 
+    public string GoogleApiKey { get; set; }
+
+    public  string Mode { get; set; }
 
     [Newtonsoft.Json.JsonIgnore] public static Config Instance => LazyInstance.Value;
 
@@ -61,5 +64,7 @@ public class Config
         UserPrincipleName = config.UserPrincipleName;
         PromotionsMailFolder = config.PromotionsMailFolder;
         WhiteList=config.WhiteList;
+        GoogleApiKey=config.GoogleApiKey;
+        Mode = config.Mode;
     }
 }

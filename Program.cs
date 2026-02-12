@@ -9,7 +9,7 @@ namespace GreyMail;
 
 internal class Program
 {
-    public static async Task<bool> IsPromotional(string emailBody)
+    public static async Task<bool?> IsPromotional(string emailBody)
     {
         while (true)
             try
@@ -19,7 +19,13 @@ internal class Program
                     FunctionChoiceBehavior = FunctionChoiceBehavior.Required(autoInvoke: true),
                     ModelId = Config.Instance.Model
                 };
-                SemanticKernelConstructor constructor = new SemanticKernelConstructor();
+                ISemanticKernelConstructorOllama constructor;
+                if (Config.Instance.Mode.ToLower().Equals("ollama"))
+                    constructor = new SemanticKernelConstructorOllama();
+                else if (Config.Instance.Mode.ToLower().Equals("google"))
+                    constructor = new SemanticKernelConstructorGoogle();
+                else
+                    throw new IOException("NOT WORKING");
                 ChatHistory history = [];
                 history.AddMessage(AuthorRole.User, "Please provide as brief of a answer as possible.");
                 history.AddMessage(AuthorRole.User, "Is this a promotional email selling something or advertising?");
@@ -34,6 +40,10 @@ internal class Program
                 Console.ForegroundColor = ConsoleColor.Blue;
 
                 return !result[0].Content.StartsWith("No", StringComparison.InvariantCultureIgnoreCase);
+            }
+            catch (IOException h)
+            {
+                return null;
             }
             catch (Exception e)
             {
@@ -62,8 +72,22 @@ internal class Program
             {
                 string domain = message.Sender.EmailAddress.Address.GetDomainFromEmail();
                 if (!SqlLiteProvider.IsWhiteListed(domain))
-                    if (await IsPromotional(message.Body.Content))
+                {
+                    bool? promo = await IsPromotional(message.Body.Content);
+                    if (promo == true)
                         await GraphApi.MoveEmailToFolderAsync(message.Id, promotionFolderId);
+                    else 
+                    
+                    if (promo == null)
+                    {
+                        Console.WriteLine("Your GOOGLE API CODE IS NOT VALID");
+                        throw new Exception("Google API key Invalid.");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine(DateTime.Now.ToString("g") + "Domain whitelisted.");
+                }
             }
             else
             {
@@ -74,6 +98,10 @@ internal class Program
             }
 
             SqlLiteProvider.SaveMessageId(message.Id);
+        }
+        else
+        {
+            Console.WriteLine(DateTime.Now.ToString("g") + "Message already processed.");
         }
     }
 
