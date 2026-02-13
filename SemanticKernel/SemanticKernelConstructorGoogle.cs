@@ -16,7 +16,7 @@ namespace GreyMail.SemanticKernel
             Config.Instance.Load();
             KernelBuilder = Kernel.CreateBuilder();
             Kernel = Kernel.CreateBuilder()
-                .AddGoogleAIGeminiChatCompletion("gemini-pro", "AIzaSyAfefqzdYiXNHn0jDNAPpWlv8GmiHpVb2o")
+                .AddGoogleAIGeminiChatCompletion("gemini-pro", "")
                 .Build();
 
         }
